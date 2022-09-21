@@ -8,6 +8,7 @@ import nltk
 from nltk import FreqDist
 from nltk.util import bigrams
 from nltk.tokenize import TreebankWordTokenizer
+from nltk.corpus import brown
 
 kLM_ORDER = 2
 kUNK_CUTOFF = 3
@@ -37,6 +38,9 @@ class BigramLanguageModel:
         self._normalizer = normalize_function
         
         # Add your code here!
+        self._freq_dict = {}
+        self._bigram_dict = {}
+        self._context_dict = {}
 
     def train_seen(self, word, count=1):
         """
@@ -46,7 +50,12 @@ class BigramLanguageModel:
         assert not self._vocab_final, \
             "Trying to add new words to finalized vocab"
 
-        # Add your code here!            
+        # Add your code here!   
+        if word in self._freq_dict:
+            self._freq_dict[word] += count
+        else:
+            self._freq_dict[word] = count
+
 
     def tokenize(self, sent):
         """
@@ -63,9 +72,15 @@ class BigramLanguageModel:
         cutoff threshold shold have the same value.  All words with counts
         greater than or equal to the cutoff should be unique and consistent.
         """
+        #print(word)
         assert self._vocab_final, \
             "Vocab must be finalized before looking up words"
-
+        if word == '<s>' or word == '</s>':
+            return word
+        if word not in self._freq_dict or self._freq_dict[word] < self._unk_cutoff:
+            return "BELOWUNKCUTOFF"
+        else:
+            return word
         # Add your code here
         return -1
 
@@ -74,7 +89,12 @@ class BigramLanguageModel:
         Fixes the vocabulary as static, prevents keeping additional vocab from
         being added
         """
-
+        if '<s>' not in self._freq_dict:
+            self._freq_dict['<s>'] = 1
+        if '</s>' not in self._freq_dict:
+            self._freq_dict['</s>'] = 1
+        if "BELOWUNKCUTOFF" not in self._freq_dict:
+            self._freq_dict['BELOWUNKCUTOFF'] = 1
         # You probably do not need to modify this code
         self._vocab_final = True
 
@@ -106,19 +126,43 @@ class BigramLanguageModel:
         Return the log MLE estimate of a word given a context.  If the
         MLE would be negative infinity, use kNEG_INF
         """
+        num = -1
+        den = -1
+        if context+'`'+word not in self._bigram_dict:
+            num = 0
+        else:
+            num = self._bigram_dict[context+'`'+word]
+        den = self._context_dict[context]
+        if (num / den) == 0:
+            return kNEG_INF
+        return lg(num / den)
 
         # This initially return 0.0, ignoring the word and context.
         # Modify this code to return the correct value.
-        return 0.0
+        #return 0.0
 
     def laplace(self, context, word):
         """
         Return the log MLE estimate of a word given a context.
         """
+        num = -1
+        den = 0
+        if context+'`'+word not in self._bigram_dict:
+            num = 0
+        else:
+            num = self._bigram_dict[context+'`'+word]
 
+        for x in self._freq_dict:
+            if context + '`' + x in self._bigram_dict:
+                den += self._bigram_dict[context + '`' + x]
+            den += 1
+        
+        num = num + 1
+        print(num, den)
+        return lg(num/den)
         # This initially return 0.0, ignoring the word and context.
         # Modify this code to return the correct value.
-        return 0.0
+        #return 0.0
 
     def jelinek_mercer(self, context, word):
         """
@@ -144,6 +188,21 @@ class BigramLanguageModel:
         Additive smoothing, assuming independent Dirichlets with fixed
         hyperparameter.
         """
+        num = -1
+        den = 0
+        if context+'`'+word not in self._bigram_dict:
+            num = 0
+        else:
+            num = self._bigram_dict[context+'`'+word]
+
+        for x in self._freq_dict:
+            if context + '`' + x in self._bigram_dict:
+                den += self._bigram_dict[context + '`' + x]
+            den += self._dirichlet_alpha
+        
+        num = num + self._dirichlet_alpha
+        print(num, den)
+        return lg(num/den)
         # This initially return 0.0, ignoring the word and context.
         # Modify this code to return the correct value.
         return 0.0
@@ -156,7 +215,21 @@ class BigramLanguageModel:
         # You'll need to complete this function, but here's a line of
         # code that will hopefully get you started.
         for context, word in bigrams(self.tokenize_and_censor(sentence)):
-            None
+            
+            #if self.vocab_lookup(word) == "BELOWUNKCUTOFF":
+            #    word = "BELOWUNKCUTOFF"
+            
+            new_key = context + "`" + word
+            print(new_key)
+            if new_key not in self._bigram_dict:
+                self._bigram_dict[new_key] = 1
+            else:
+                self._bigram_dict[new_key] += 1
+            if context not in self._context_dict:
+                self._context_dict[context] = 1
+            else:
+                self._context_dict[context] += 1
+            
 
     def perplexity(self, sentence, method):
         """
@@ -218,6 +291,7 @@ if __name__ == "__main__":
 
     for ii in nltk.corpus.brown.sents():
         for jj in lm.tokenize(" ".join(ii)):
+            #print(lm._normalizer(jj))
             lm.train_seen(lm._normalizer(jj))
 
     print("Done looking at all the words, finalizing vocabulary")
@@ -231,6 +305,8 @@ if __name__ == "__main__":
         if args.brown_limit > 0 and sentence_count >= args.brown_limit:
             break
 
+    #for x in lm._bigram_dict:
+    #    print(x, lm._bigram_dict[x])
     print("Trained language model with %i sentences from Brown corpus." % sentence_count)
     assert args.method in ['kneser_ney', 'mle', 'dirichlet', \
                            'jelinek_mercer', 'good_turing', 'laplace'], \

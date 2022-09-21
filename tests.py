@@ -62,7 +62,10 @@ class TestSequenceFunctions(unittest.TestCase):
         self.lm.finalize()
 
         self.lm.add_train("a a b")
-
+        #for x in self.lm._bigram_dict:
+        #    print(x, self.lm._bigram_dict)
+        #for x in self.lm._context_dict:
+        #    print(x, self.lm._context_dict)
         # Test MLE
         word_start = self.lm.vocab_lookup(kSTART)
         word_end = self.lm.vocab_lookup(kEND)
